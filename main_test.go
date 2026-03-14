@@ -308,4 +308,69 @@ var _ = Describe("appleMusicAgent", func() {
 			Expect(artists).To(HaveLen(1))
 		})
 	})
+
+	Describe("hasField", func() {
+		It("checks biography field", func() {
+			page := &parsedPageData{Biography: "A bio"}
+			Expect(hasField(page, "biography")).To(BeTrue())
+			Expect(hasField(&parsedPageData{}, "biography")).To(BeFalse())
+		})
+
+		It("checks image field", func() {
+			page := &parsedPageData{ImageURL: "https://example.com/img.jpg"}
+			Expect(hasField(page, "image")).To(BeTrue())
+			Expect(hasField(&parsedPageData{}, "image")).To(BeFalse())
+		})
+
+		It("checks similar field", func() {
+			page := &parsedPageData{SimilarArtists: []similarArtistInfo{{Name: "X"}}}
+			Expect(hasField(page, "similar")).To(BeTrue())
+			Expect(hasField(&parsedPageData{}, "similar")).To(BeFalse())
+		})
+
+		It("checks any field by default", func() {
+			Expect(hasField(&parsedPageData{Biography: "bio"}, "")).To(BeTrue())
+			Expect(hasField(&parsedPageData{}, "")).To(BeFalse())
+		})
+	})
+
+	Describe("fetchArtistPage", func() {
+		BeforeEach(func() {
+			pdk.PDKMock.On("Log", mock.Anything, mock.Anything).Maybe()
+		})
+
+		It("returns cached page data", func() {
+			host.ConfigMock.On("Get", "countries").Return("us", true)
+			host.ConfigMock.On("GetInt", "cache_ttl_days").Return(int64(7), true)
+
+			pageData := parsedPageData{Biography: "A biography"}
+			data, _ := json.Marshal(pageData)
+			host.KVStoreMock.On("Get", "page:12345:us").Return(data, true, nil)
+
+			result, err := fetchArtistPage(12345, "biography")
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.Biography).To(Equal("A biography"))
+		})
+
+		It("falls back to next country when first has no wanted field", func() {
+			host.ConfigMock.On("Get", "countries").Return("br,us", true)
+			host.ConfigMock.On("GetInt", "cache_ttl_days").Return(int64(7), true)
+
+			// BR page cached but no biography
+			brData, _ := json.Marshal(parsedPageData{ImageURL: "https://img.com/br.jpg"})
+			host.KVStoreMock.On("Get", "page:12345:br").Return(brData, true, nil)
+
+			// US page has biography
+			usHTML := `<html><script type="application/ld+json">{"description":"English bio","image":"https://img.com/us.jpg"}</script></html>`
+			host.KVStoreMock.On("Get", "page:12345:us").Return([]byte(nil), false, nil)
+			host.HTTPMock.On("Send", mock.MatchedBy(func(req host.HTTPRequest) bool {
+				return strings.Contains(req.URL, "/us/artist/-/12345")
+			})).Return(&host.HTTPResponse{StatusCode: 200, Body: []byte(usHTML)}, nil)
+			host.KVStoreMock.On("SetWithTTL", "page:12345:us", mock.Anything, mock.Anything).Return(nil)
+
+			result, err := fetchArtistPage(12345, "biography")
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.Biography).To(Equal("English bio"))
+		})
+	})
 })
