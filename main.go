@@ -23,14 +23,14 @@ const (
 	appleMusicBaseURL = "https://music.apple.com"
 )
 
-// Compile-time interface assertions (uncomment after all methods are added in Tasks 11-15)
-// var (
-// 	_ metadata.ArtistURLProvider       = (*appleMusicAgent)(nil)
-// 	_ metadata.ArtistBiographyProvider = (*appleMusicAgent)(nil)
-// 	_ metadata.ArtistImagesProvider    = (*appleMusicAgent)(nil)
-// 	_ metadata.SimilarArtistsProvider  = (*appleMusicAgent)(nil)
-// 	_ metadata.ArtistTopSongsProvider  = (*appleMusicAgent)(nil)
-// )
+// Compile-time interface assertions
+var (
+	_ metadata.ArtistURLProvider       = (*appleMusicAgent)(nil)
+	_ metadata.ArtistBiographyProvider = (*appleMusicAgent)(nil)
+	_ metadata.ArtistImagesProvider    = (*appleMusicAgent)(nil)
+	_ metadata.SimilarArtistsProvider  = (*appleMusicAgent)(nil)
+	_ metadata.ArtistTopSongsProvider  = (*appleMusicAgent)(nil)
+)
 
 func init() {
 	metadata.Register(&appleMusicAgent{})
@@ -509,4 +509,164 @@ func hasField(page *parsedPageData, field string) bool {
 	default:
 		return page.Biography != "" || page.ImageURL != "" || len(page.SimilarArtists) > 0
 	}
+}
+
+// --- Capability methods ---
+
+// GetArtistURL returns the Apple Music URL for the artist.
+func (a *appleMusicAgent) GetArtistURL(input metadata.ArtistRequest) (*metadata.ArtistURLResponse, error) {
+	artistID, err := resolveArtistID(input.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	countries := getCountries()
+	artistURL := fmt.Sprintf("%s/%s/artist/-/%d", appleMusicBaseURL, countries[0], artistID)
+	return &metadata.ArtistURLResponse{URL: artistURL}, nil
+}
+
+// GetArtistBiography returns the artist biography from Apple Music.
+func (a *appleMusicAgent) GetArtistBiography(input metadata.ArtistRequest) (*metadata.ArtistBiographyResponse, error) {
+	artistID, err := resolveArtistID(input.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	page, err := fetchArtistPage(artistID, "biography")
+	if err != nil {
+		return nil, err
+	}
+
+	if page.Biography == "" {
+		return nil, errors.New("no biography found")
+	}
+
+	return &metadata.ArtistBiographyResponse{Biography: page.Biography}, nil
+}
+
+// GetArtistImages returns artist images from Apple Music in multiple sizes.
+func (a *appleMusicAgent) GetArtistImages(input metadata.ArtistRequest) (*metadata.ArtistImagesResponse, error) {
+	artistID, err := resolveArtistID(input.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	page, err := fetchArtistPage(artistID, "image")
+	if err != nil {
+		return nil, err
+	}
+
+	if page.ImageURL == "" {
+		return nil, errors.New("no artist image found")
+	}
+
+	// Generate multiple sizes from the base image URL
+	sizes := []int{1000, 600, 300}
+	images := make([]metadata.ImageInfo, 0, len(sizes))
+	for _, size := range sizes {
+		images = append(images, metadata.ImageInfo{
+			URL:  rewriteImageSize(page.ImageURL, size),
+			Size: int32(size),
+		})
+	}
+
+	return &metadata.ArtistImagesResponse{Images: images}, nil
+}
+
+// GetSimilarArtists returns similar artists scraped from the Apple Music page.
+func (a *appleMusicAgent) GetSimilarArtists(input metadata.SimilarArtistsRequest) (*metadata.SimilarArtistsResponse, error) {
+	artistID, err := resolveArtistID(input.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	page, err := fetchArtistPage(artistID, "similar")
+	if err != nil {
+		return nil, err
+	}
+
+	if len(page.SimilarArtists) == 0 {
+		return nil, errors.New("no similar artists found")
+	}
+
+	limit := int(input.Limit)
+	if limit <= 0 {
+		limit = len(page.SimilarArtists)
+	}
+	if limit > len(page.SimilarArtists) {
+		limit = len(page.SimilarArtists)
+	}
+
+	artists := make([]metadata.ArtistRef, 0, limit)
+	for i := 0; i < limit; i++ {
+		artists = append(artists, metadata.ArtistRef{
+			Name: page.SimilarArtists[i].Name,
+		})
+	}
+
+	return &metadata.SimilarArtistsResponse{Artists: artists}, nil
+}
+
+// GetArtistTopSongs returns the artist's top songs via the iTunes Lookup API.
+func (a *appleMusicAgent) GetArtistTopSongs(input metadata.TopSongsRequest) (*metadata.TopSongsResponse, error) {
+	artistID, err := resolveArtistID(input.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	count := int(input.Count)
+	if count <= 0 {
+		count = 10
+	}
+
+	// Check cache
+	cacheKey := fmt.Sprintf("topsongs:%d:%d", artistID, count)
+	if cached, ok := kvGetTopSongs(cacheKey); ok {
+		pdk.Log(pdk.LogDebug, "top songs cache hit: "+cacheKey)
+		return cached, nil
+	}
+
+	// Fetch from iTunes Lookup API
+	lookupURL := fmt.Sprintf("%s?id=%d&entity=song&sort=popular&limit=%d",
+		iTunesLookupURL, artistID, count)
+
+	pdk.Log(pdk.LogDebug, "fetching top songs: "+lookupURL)
+
+	body, statusCode, err := httpGet(lookupURL)
+	if err != nil {
+		return nil, fmt.Errorf("iTunes lookup failed: %w", err)
+	}
+	if statusCode != 200 {
+		return nil, fmt.Errorf("iTunes lookup returned status %d", statusCode)
+	}
+
+	var lookupResp itunesLookupResponse
+	if err := json.Unmarshal(body, &lookupResp); err != nil {
+		return nil, fmt.Errorf("failed to parse iTunes lookup response: %w", err)
+	}
+
+	// First result is the artist itself, skip it
+	songs := make([]metadata.SongRef, 0, len(lookupResp.Results))
+	for _, r := range lookupResp.Results {
+		if r.WrapperType == "track" && r.TrackName != "" {
+			songs = append(songs, metadata.SongRef{
+				Name:   r.TrackName,
+				Artist: r.ArtistName,
+			})
+		}
+	}
+
+	if len(songs) == 0 {
+		return nil, errors.New("no top songs found")
+	}
+
+	result := &metadata.TopSongsResponse{Songs: songs}
+
+	// Cache with TTL
+	ttl := getCacheTTLSeconds()
+	if err := kvSetWithTTL(cacheKey, result, ttl); err != nil {
+		pdk.Log(pdk.LogWarn, "failed to cache top songs: "+err.Error())
+	}
+
+	return result, nil
 }
