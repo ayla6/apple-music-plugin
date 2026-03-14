@@ -20,6 +20,31 @@
           "title": "Countries",
           "description": "Comma-separated list of two-letter ISO country codes for Apple Music storefronts, tried in order until content is found. Controls the language of artist biographies (e.g., 'br' returns Portuguese, 'de' returns German).",
           "default": "us"
+        },
+        "enable_artist_url": {
+          "type": "boolean",
+          "title": "Enable Artist URL",
+          "default": true
+        },
+        "enable_artist_biography": {
+          "type": "boolean",
+          "title": "Enable Artist Biography",
+          "default": true
+        },
+        "enable_artist_images": {
+          "type": "boolean",
+          "title": "Enable Artist Images",
+          "default": true
+        },
+        "enable_similar_artists": {
+          "type": "boolean",
+          "title": "Enable Similar Artists",
+          "default": true
+        },
+        "enable_top_songs": {
+          "type": "boolean",
+          "title": "Enable Top Songs",
+          "default": true
         }
       }
     }

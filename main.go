@@ -26,6 +26,15 @@ const (
 	// HTML parsing limits
 	similarSectionMaxBytes = 60000 // generous chunk after section marker to cover all artist lockups
 	sectionBoundaryOffset  = 100   // skip initial chars before searching for next section boundary
+
+	// Config keys
+	configCountries       = "countries"
+	configCacheTTLDays    = "cache_ttl_days"
+	configArtistURL       = "enable_artist_url"
+	configArtistBiography = "enable_artist_biography"
+	configArtistImages    = "enable_artist_images"
+	configSimilarArtists  = "enable_similar_artists"
+	configTopSongs        = "enable_top_songs"
 )
 
 // Compile-time interface assertions
@@ -105,7 +114,7 @@ type jsonLDData struct {
 
 // getCountries returns the ordered list of country codes from config.
 func getCountries() []string {
-	val, exists := host.ConfigGet("countries")
+	val, exists := host.ConfigGet(configCountries)
 	if !exists || strings.TrimSpace(val) == "" {
 		return []string{defaultCountry}
 	}
@@ -123,9 +132,16 @@ func getCountries() []string {
 	return countries
 }
 
+// isEnabled returns whether a capability is enabled via config.
+// Capabilities default to enabled; set the config value to "false" to disable.
+func isEnabled(key string) bool {
+	val, exists := host.ConfigGet(key)
+	return !exists || val != "false"
+}
+
 // getCacheTTLSeconds returns the cache TTL in seconds from config.
 func getCacheTTLSeconds() int64 {
-	days, exists := host.ConfigGetInt("cache_ttl_days")
+	days, exists := host.ConfigGetInt(configCacheTTLDays)
 	if !exists || days <= 0 {
 		days = defaultCacheTTL
 	}
@@ -514,6 +530,9 @@ func hasField(page *parsedPageData, field pageField) bool {
 
 // GetArtistURL returns the Apple Music URL for the artist.
 func (a *appleMusicAgent) GetArtistURL(input metadata.ArtistRequest) (*metadata.ArtistURLResponse, error) {
+	if !isEnabled(configArtistURL) {
+		return nil, nil
+	}
 	artistID, err := resolveArtistID(input.Name)
 	if err != nil {
 		return nil, err
@@ -526,6 +545,9 @@ func (a *appleMusicAgent) GetArtistURL(input metadata.ArtistRequest) (*metadata.
 
 // GetArtistBiography returns the artist biography from Apple Music.
 func (a *appleMusicAgent) GetArtistBiography(input metadata.ArtistRequest) (*metadata.ArtistBiographyResponse, error) {
+	if !isEnabled(configArtistBiography) {
+		return nil, nil
+	}
 	artistID, err := resolveArtistID(input.Name)
 	if err != nil {
 		pdk.Log(pdk.LogWarn, "GetArtistBiography: resolve failed: "+err.Error())
@@ -549,6 +571,9 @@ func (a *appleMusicAgent) GetArtistBiography(input metadata.ArtistRequest) (*met
 
 // GetArtistImages returns artist images from Apple Music in multiple sizes.
 func (a *appleMusicAgent) GetArtistImages(input metadata.ArtistRequest) (*metadata.ArtistImagesResponse, error) {
+	if !isEnabled(configArtistImages) {
+		return nil, nil
+	}
 	artistID, err := resolveArtistID(input.Name)
 	if err != nil {
 		return nil, err
@@ -578,6 +603,9 @@ func (a *appleMusicAgent) GetArtistImages(input metadata.ArtistRequest) (*metada
 
 // GetSimilarArtists returns similar artists scraped from the Apple Music page.
 func (a *appleMusicAgent) GetSimilarArtists(input metadata.SimilarArtistsRequest) (*metadata.SimilarArtistsResponse, error) {
+	if !isEnabled(configSimilarArtists) {
+		return nil, nil
+	}
 	artistID, err := resolveArtistID(input.Name)
 	if err != nil {
 		pdk.Log(pdk.LogWarn, "GetSimilarArtists: resolve failed: "+err.Error())
@@ -610,6 +638,9 @@ func (a *appleMusicAgent) GetSimilarArtists(input metadata.SimilarArtistsRequest
 
 // GetArtistTopSongs returns the artist's top songs via the iTunes Lookup API.
 func (a *appleMusicAgent) GetArtistTopSongs(input metadata.TopSongsRequest) (*metadata.TopSongsResponse, error) {
+	if !isEnabled(configTopSongs) {
+		return nil, nil
+	}
 	artistID, err := resolveArtistID(input.Name)
 	if err != nil {
 		return nil, err

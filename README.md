@@ -48,6 +48,12 @@ Access the plugin configuration in Navidrome: **Settings > Plugins > Apple Music
 - **What it is**: How many days to cache scraped metadata (biographies, images, similar artists) before re-fetching from Apple Music
 - **Note**: Artist ID mappings are cached permanently since they don't change
 
+#### Enable/Disable Capabilities
+- **Config keys**: `enable_artist_url`, `enable_artist_biography`, `enable_artist_images`, `enable_similar_artists`, `enable_top_songs`
+- **Default**: All enabled
+- **Values**: `true` (enabled) or `false` (disabled)
+- **What it is**: Toggle individual metadata capabilities on or off. When disabled, the plugin will skip that capability and Navidrome will fall through to the next configured agent.
+
 #### Countries
 - **Default**: `us`
 - **What it is**: Comma-separated list of two-letter ISO country codes for Apple Music storefronts
@@ -88,19 +94,19 @@ The plugin implements five metadata provider capabilities:
 
 ### Data Sources
 
-| Source | URL | Data |
-|--------|-----|------|
-| iTunes Search API | `itunes.apple.com/search` | Artist ID resolution |
-| iTunes Lookup API | `itunes.apple.com/lookup` | Top songs |
-| Apple Music Web | `music.apple.com/{country}/artist/-/{id}` | Biography, images, similar artists |
+| Source            | URL                                       | Data                               |
+|-------------------|-------------------------------------------|------------------------------------|
+| iTunes Search API | `itunes.apple.com/search`                 | Artist ID resolution               |
+| iTunes Lookup API | `itunes.apple.com/lookup`                 | Top songs                          |
+| Apple Music Web   | `music.apple.com/{country}/artist/-/{id}` | Biography, images, similar artists |
 
 ### Files
 
-| File                             | Description                                         |
-|----------------------------------|-----------------------------------------------------|
-| [main.go](main.go)              | Plugin implementation — all metadata capabilities   |
-| [manifest.json](manifest.json)  | Plugin metadata and permission declarations         |
-| [Makefile](Makefile)             | Build automation                                    |
+| File                           | Description                                       |
+|--------------------------------|---------------------------------------------------|
+| [main.go](main.go)             | Plugin implementation — all metadata capabilities |
+| [manifest.json](manifest.json) | Plugin metadata and permission declarations       |
+| [Makefile](Makefile)           | Build automation                                  |
 
 ## Building
 

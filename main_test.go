@@ -27,8 +27,8 @@ func setupTaylorSwiftCache() {
 	host.KVStoreMock.On("Get", "artist:taylor swift").Return(
 		mustMarshal(cachedArtistID{ArtistID: taylorSwiftID}), true, nil,
 	)
-	host.ConfigMock.On("Get", "countries").Return("us", true)
-	host.ConfigMock.On("GetInt", "cache_ttl_days").Return(int64(7), true)
+	host.ConfigMock.On("Get", configCountries).Return("us", true)
+	host.ConfigMock.On("GetInt", configCacheTTLDays).Return(int64(7), true)
 }
 
 var _ = Describe("appleMusicAgent", func() {
@@ -41,53 +41,83 @@ var _ = Describe("appleMusicAgent", func() {
 		host.HTTPMock.ExpectedCalls = nil
 		host.HTTPMock.Calls = nil
 		pdk.PDKMock.On("Log", mock.Anything, mock.Anything).Maybe()
+
+		// Default all capabilities to enabled (not set = enabled)
+		host.ConfigMock.On("Get", configArtistURL).Return("", false).Maybe()
+		host.ConfigMock.On("Get", configArtistBiography).Return("", false).Maybe()
+		host.ConfigMock.On("Get", configArtistImages).Return("", false).Maybe()
+		host.ConfigMock.On("Get", configSimilarArtists).Return("", false).Maybe()
+		host.ConfigMock.On("Get", configTopSongs).Return("", false).Maybe()
 	})
 
 	Describe("getCountries", func() {
 		It("returns default country when config not set", func() {
-			host.ConfigMock.On("Get", "countries").Return("", false)
+			host.ConfigMock.On("Get", configCountries).Return("", false)
 			Expect(getCountries()).To(Equal([]string{"us"}))
 		})
 
 		It("returns default country when config is empty", func() {
-			host.ConfigMock.On("Get", "countries").Return("  ", true)
+			host.ConfigMock.On("Get", configCountries).Return("  ", true)
 			Expect(getCountries()).To(Equal([]string{"us"}))
 		})
 
 		It("parses single country", func() {
-			host.ConfigMock.On("Get", "countries").Return("br", true)
+			host.ConfigMock.On("Get", configCountries).Return("br", true)
 			Expect(getCountries()).To(Equal([]string{"br"}))
 		})
 
 		It("parses multiple countries with spaces", func() {
-			host.ConfigMock.On("Get", "countries").Return(" br , us , de ", true)
+			host.ConfigMock.On("Get", configCountries).Return(" br , us , de ", true)
 			Expect(getCountries()).To(Equal([]string{"br", "us", "de"}))
 		})
 
 		It("normalizes to lowercase", func() {
-			host.ConfigMock.On("Get", "countries").Return("BR,US", true)
+			host.ConfigMock.On("Get", configCountries).Return("BR,US", true)
 			Expect(getCountries()).To(Equal([]string{"br", "us"}))
 		})
 
 		It("skips empty entries", func() {
-			host.ConfigMock.On("Get", "countries").Return("br,,us,", true)
+			host.ConfigMock.On("Get", configCountries).Return("br,,us,", true)
 			Expect(getCountries()).To(Equal([]string{"br", "us"}))
+		})
+	})
+
+	Describe("isEnabled", func() {
+		BeforeEach(func() {
+			// Clear default enable_* mocks so we can set specific expectations
+			host.ConfigMock.ExpectedCalls = nil
+			host.ConfigMock.Calls = nil
+		})
+
+		It("returns true when config not set (default enabled)", func() {
+			host.ConfigMock.On("Get", configArtistURL).Return("", false)
+			Expect(isEnabled(configArtistURL)).To(BeTrue())
+		})
+
+		It("returns true when config is true", func() {
+			host.ConfigMock.On("Get", configArtistURL).Return("true", true)
+			Expect(isEnabled(configArtistURL)).To(BeTrue())
+		})
+
+		It("returns false when config is false", func() {
+			host.ConfigMock.On("Get", configArtistURL).Return("false", true)
+			Expect(isEnabled(configArtistURL)).To(BeFalse())
 		})
 	})
 
 	Describe("getCacheTTLSeconds", func() {
 		It("returns default TTL when config not set", func() {
-			host.ConfigMock.On("GetInt", "cache_ttl_days").Return(int64(0), false)
+			host.ConfigMock.On("GetInt", configCacheTTLDays).Return(int64(0), false)
 			Expect(getCacheTTLSeconds()).To(Equal(int64(7 * 24 * 60 * 60)))
 		})
 
 		It("returns default TTL when config is zero", func() {
-			host.ConfigMock.On("GetInt", "cache_ttl_days").Return(int64(0), true)
+			host.ConfigMock.On("GetInt", configCacheTTLDays).Return(int64(0), true)
 			Expect(getCacheTTLSeconds()).To(Equal(int64(7 * 24 * 60 * 60)))
 		})
 
 		It("returns configured TTL in seconds", func() {
-			host.ConfigMock.On("GetInt", "cache_ttl_days").Return(int64(14), true)
+			host.ConfigMock.On("GetInt", configCacheTTLDays).Return(int64(14), true)
 			Expect(getCacheTTLSeconds()).To(Equal(int64(14 * 24 * 60 * 60)))
 		})
 	})
@@ -205,7 +235,7 @@ var _ = Describe("appleMusicAgent", func() {
 		It("returns cached artist ID", func() {
 			data := mustMarshal(cachedArtistID{ArtistID: taylorSwiftID})
 			host.KVStoreMock.On("Get", "artist:taylor swift").Return(data, true, nil)
-			host.ConfigMock.On("Get", "countries").Return("us", true)
+			host.ConfigMock.On("Get", configCountries).Return("us", true)
 
 			id, err := resolveArtistID("Taylor Swift")
 			Expect(err).ToNot(HaveOccurred())
@@ -214,7 +244,7 @@ var _ = Describe("appleMusicAgent", func() {
 
 		It("searches iTunes API on cache miss", func() {
 			host.KVStoreMock.On("Get", "artist:taylor swift").Return([]byte(nil), false, nil)
-			host.ConfigMock.On("Get", "countries").Return("us", true)
+			host.ConfigMock.On("Get", configCountries).Return("us", true)
 
 			searchResp := itunesSearchResponse{
 				ResultCount: 1,
@@ -242,7 +272,7 @@ var _ = Describe("appleMusicAgent", func() {
 
 		It("returns error when no results found", func() {
 			host.KVStoreMock.On("Get", "artist:unknown").Return([]byte(nil), false, nil)
-			host.ConfigMock.On("Get", "countries").Return("us", true)
+			host.ConfigMock.On("Get", configCountries).Return("us", true)
 
 			searchResp := itunesSearchResponse{ResultCount: 0, Results: nil}
 			respBody := mustMarshal(searchResp)
@@ -375,8 +405,8 @@ var _ = Describe("appleMusicAgent", func() {
 
 	Describe("fetchArtistPage", func() {
 		It("returns cached page data", func() {
-			host.ConfigMock.On("Get", "countries").Return("us", true)
-			host.ConfigMock.On("GetInt", "cache_ttl_days").Return(int64(7), true)
+			host.ConfigMock.On("Get", configCountries).Return("us", true)
+			host.ConfigMock.On("GetInt", configCacheTTLDays).Return(int64(7), true)
 
 			pageData := parsedPageData{Biography: "A biography"}
 			data := mustMarshal(pageData)
@@ -388,8 +418,8 @@ var _ = Describe("appleMusicAgent", func() {
 		})
 
 		It("falls back to next country when first has no wanted field", func() {
-			host.ConfigMock.On("Get", "countries").Return("br,us", true)
-			host.ConfigMock.On("GetInt", "cache_ttl_days").Return(int64(7), true)
+			host.ConfigMock.On("Get", configCountries).Return("br,us", true)
+			host.ConfigMock.On("GetInt", configCacheTTLDays).Return(int64(7), true)
 
 			// BR page cached but no biography
 			brData := mustMarshal(parsedPageData{ImageURL: "https://img.com/br.jpg"})
@@ -420,6 +450,14 @@ var _ = Describe("appleMusicAgent", func() {
 			resp, err := agent.GetArtistURL(metadata.ArtistRequest{Name: "Taylor Swift"})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(resp.URL).To(Equal("https://music.apple.com/us/artist/-/159260351"))
+		})
+
+		It("returns nil when disabled", func() {
+			host.ConfigMock.ExpectedCalls = nil
+			host.ConfigMock.On("Get", configArtistURL).Return("false", true)
+			resp, err := agent.GetArtistURL(metadata.ArtistRequest{Name: "Taylor Swift"})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(resp).To(BeNil())
 		})
 	})
 
