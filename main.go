@@ -2,15 +2,10 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
-	"fmt"
-	"net/url"
-	"regexp"
 	"strings"
 
 	"github.com/navidrome/navidrome/plugins/pdk/go/host"
 	"github.com/navidrome/navidrome/plugins/pdk/go/metadata"
-	"github.com/navidrome/navidrome/plugins/pdk/go/pdk"
 )
 
 const (
@@ -23,14 +18,14 @@ const (
 	appleMusicBaseURL = "https://music.apple.com"
 )
 
-// Compile-time interface assertions (will compile after all methods are added in Tasks 11-15)
-var (
-	_ metadata.ArtistURLProvider       = (*appleMusicAgent)(nil)
-	_ metadata.ArtistBiographyProvider = (*appleMusicAgent)(nil)
-	_ metadata.ArtistImagesProvider    = (*appleMusicAgent)(nil)
-	_ metadata.SimilarArtistsProvider  = (*appleMusicAgent)(nil)
-	_ metadata.ArtistTopSongsProvider  = (*appleMusicAgent)(nil)
-)
+// Compile-time interface assertions (uncomment after all methods are added in Tasks 11-15)
+// var (
+// 	_ metadata.ArtistURLProvider       = (*appleMusicAgent)(nil)
+// 	_ metadata.ArtistBiographyProvider = (*appleMusicAgent)(nil)
+// 	_ metadata.ArtistImagesProvider    = (*appleMusicAgent)(nil)
+// 	_ metadata.SimilarArtistsProvider  = (*appleMusicAgent)(nil)
+// 	_ metadata.ArtistTopSongsProvider  = (*appleMusicAgent)(nil)
+// )
 
 func init() {
 	metadata.Register(&appleMusicAgent{})
@@ -94,4 +89,119 @@ type jsonLDData struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Image       string `json:"image"`
+}
+
+// --- Config helpers ---
+
+// getCountries returns the ordered list of country codes from config.
+func getCountries() []string {
+	val, exists := host.ConfigGet("countries")
+	if !exists || strings.TrimSpace(val) == "" {
+		return []string{defaultCountry}
+	}
+	parts := strings.Split(val, ",")
+	countries := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(strings.ToLower(p))
+		if p != "" {
+			countries = append(countries, p)
+		}
+	}
+	if len(countries) == 0 {
+		return []string{defaultCountry}
+	}
+	return countries
+}
+
+// getCacheTTLSeconds returns the cache TTL in seconds from config.
+func getCacheTTLSeconds() int64 {
+	days, exists := host.ConfigGetInt("cache_ttl_days")
+	if !exists || days <= 0 {
+		days = defaultCacheTTL
+	}
+	return days * 24 * 60 * 60
+}
+
+// --- KVStore helpers ---
+// Note: We avoid generics since TinyGo's support is limited.
+// Instead, we use concrete unmarshal helpers for each cached type.
+
+// kvGetArtistID retrieves a cached artist ID from KVStore.
+func kvGetArtistID(key string) (*cachedArtistID, bool) {
+	data, exists, err := host.KVStoreGet(key)
+	if err != nil || !exists {
+		return nil, false
+	}
+	var val cachedArtistID
+	if err := json.Unmarshal(data, &val); err != nil {
+		return nil, false
+	}
+	return &val, true
+}
+
+// kvGetPageData retrieves cached page data from KVStore.
+func kvGetPageData(key string) (*parsedPageData, bool) {
+	data, exists, err := host.KVStoreGet(key)
+	if err != nil || !exists {
+		return nil, false
+	}
+	var val parsedPageData
+	if err := json.Unmarshal(data, &val); err != nil {
+		return nil, false
+	}
+	return &val, true
+}
+
+// kvGetTopSongs retrieves cached top songs from KVStore.
+func kvGetTopSongs(key string) (*metadata.TopSongsResponse, bool) {
+	data, exists, err := host.KVStoreGet(key)
+	if err != nil || !exists {
+		return nil, false
+	}
+	var val metadata.TopSongsResponse
+	if err := json.Unmarshal(data, &val); err != nil {
+		return nil, false
+	}
+	return &val, true
+}
+
+// kvSet stores a JSON value in KVStore with no TTL (permanent).
+func kvSet(key string, value any) error {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	return host.KVStoreSet(key, data)
+}
+
+// kvSetWithTTL stores a JSON value in KVStore with a TTL in seconds.
+func kvSetWithTTL(key string, value any, ttlSeconds int64) error {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	return host.KVStoreSetWithTTL(key, data, ttlSeconds)
+}
+
+// --- HTTP helper ---
+
+// httpGet performs a GET request and returns the response body.
+func httpGet(rawURL string) ([]byte, int32, error) {
+	resp, err := host.HTTPSend(host.HTTPRequest{
+		Method:    "GET",
+		URL:       rawURL,
+		Headers:   map[string]string{"User-Agent": userAgent},
+		TimeoutMs: httpTimeoutMs,
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+	return resp.Body, resp.StatusCode, nil
+}
+
+// --- Name normalization ---
+
+// normalizeArtistName normalizes an artist name for cache key use.
+func normalizeArtistName(name string) string {
+	return strings.ToLower(strings.TrimSpace(name))
 }
