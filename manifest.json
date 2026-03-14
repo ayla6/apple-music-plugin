@@ -1,0 +1,37 @@
+{
+  "$schema": "https://raw.githubusercontent.com/navidrome/navidrome/refs/heads/master/plugins/manifest-schema.json",
+  "name": "Apple Music Metadata Agent",
+  "author": "Navidrome Team",
+  "version": "0.1.0",
+  "description": "Fetches artist metadata from Apple Music using free iTunes/Apple Music endpoints",
+  "website": "https://github.com/navidrome/apple-music-plugin",
+  "config": {
+    "schema": {
+      "type": "object",
+      "properties": {
+        "cache_ttl_days": {
+          "type": "integer",
+          "title": "Cache TTL (days)",
+          "description": "How long to cache scraped metadata before re-fetching",
+          "default": 7
+        },
+        "countries": {
+          "type": "string",
+          "title": "Countries",
+          "description": "Comma-separated list of two-letter ISO country codes for Apple Music storefronts, tried in order until content is found. Controls the language of artist biographies (e.g., 'br' returns Portuguese, 'de' returns German).",
+          "default": "us"
+        }
+      }
+    }
+  },
+  "permissions": {
+    "http": {
+      "reason": "Fetch artist metadata from iTunes API and Apple Music web pages",
+      "requiredHosts": ["itunes.apple.com", "music.apple.com"]
+    },
+    "kvstore": {
+      "reason": "Cache artist ID mappings and scraped metadata to reduce API calls",
+      "maxSize": "10MB"
+    }
+  }
+}
