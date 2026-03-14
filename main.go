@@ -244,22 +244,20 @@ func resolveArtistID(artistName string) (int64, error) {
 // findBestArtistMatch finds the best matching artist from search results.
 // Uses case-insensitive exact match first, then falls back to first result.
 func findBestArtistMatch(query string, results []itunesArtistResult) *itunesArtistResult {
-	queryLower := strings.ToLower(strings.TrimSpace(query))
+	normalized := normalizeArtistName(query)
+	var firstArtist *itunesArtistResult
 	for i := range results {
 		if results[i].WrapperType != "artist" {
 			continue
 		}
-		if strings.ToLower(results[i].ArtistName) == queryLower {
+		if firstArtist == nil {
+			firstArtist = &results[i]
+		}
+		if normalizeArtistName(results[i].ArtistName) == normalized {
 			return &results[i]
 		}
 	}
-	// Fall back to first artist result
-	for i := range results {
-		if results[i].WrapperType == "artist" {
-			return &results[i]
-		}
-	}
-	return nil
+	return firstArtist
 }
 
 // --- HTML parsing helpers ---
