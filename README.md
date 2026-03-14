@@ -43,23 +43,21 @@ Access the plugin configuration in Navidrome: **Settings > Plugins > Apple Music
 
 ### Configuration Fields
 
-#### Cache TTL (days)
-- **Default**: `7`
-- **What it is**: How many days to cache scraped metadata (biographies, images, similar artists) before re-fetching from Apple Music
-- **Note**: Artist ID mappings are cached permanently since they don't change
-
-#### Enable/Disable Capabilities
-- **Config keys**: `enable_artist_url`, `enable_artist_biography`, `enable_artist_images`, `enable_similar_artists`, `enable_top_songs`
-- **Default**: All enabled
-- **Values**: `true` (enabled) or `false` (disabled)
-- **What it is**: Toggle individual metadata capabilities on or off. When disabled, the plugin will skip that capability and Navidrome will fall through to the next configured agent.
-
 #### Countries
 - **Default**: `us`
 - **What it is**: Comma-separated list of two-letter ISO country codes for Apple Music storefronts
 - **How it works**: Storefronts are tried in order until content is found. This controls the language of artist biographies and which regional catalog is searched
 - **Example**: `br,de,us` — tries the Brazil (Portuguese) storefront first, then Germany (German), then the US (English) storefront
 - **Supported language markers**: English, Portuguese, German, French, Spanish (for similar artist detection)
+
+#### Cache TTL (days)
+- **Default**: `7`
+- **What it is**: How many days to cache scraped metadata (biographies, images, similar artists) before re-fetching from Apple Music
+- **Note**: Artist ID mappings are cached permanently since they don't change
+
+#### Capabilities
+- **Default**: All enabled
+- **What it is**: Each capability (Artist URL, Artist Biography, Artist Images, Similar Artists, Top Songs) can be individually toggled on or off. When disabled, the plugin will skip that capability and Navidrome will fall through to the next configured agent.
 
 ## How It Works
 

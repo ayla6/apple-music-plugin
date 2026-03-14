@@ -23,30 +23,92 @@
         },
         "enable_artist_url": {
           "type": "boolean",
-          "title": "Enable Artist URL",
+          "title": "Artist URL",
           "default": true
         },
         "enable_artist_biography": {
           "type": "boolean",
-          "title": "Enable Artist Biography",
+          "title": "Artist Biography",
           "default": true
         },
         "enable_artist_images": {
           "type": "boolean",
-          "title": "Enable Artist Images",
+          "title": "Artist Images",
           "default": true
         },
         "enable_similar_artists": {
           "type": "boolean",
-          "title": "Enable Similar Artists",
+          "title": "Similar Artists",
           "default": true
         },
         "enable_top_songs": {
           "type": "boolean",
-          "title": "Enable Top Songs",
+          "title": "Top Songs",
           "default": true
         }
       }
+    },
+    "uiSchema": {
+      "type": "VerticalLayout",
+      "elements": [
+        {
+          "type": "HorizontalLayout",
+          "elements": [
+            {
+              "type": "Control",
+              "scope": "#/properties/countries",
+              "options": {
+                "size": 9
+              }
+            },
+            {
+              "type": "Control",
+              "scope": "#/properties/cache_ttl_days",
+              "options": {
+                "size": 3
+              }
+            }
+          ]
+        },
+        {
+          "type": "Label",
+          "text": "Capabilities"
+        },
+        {
+          "type": "HorizontalLayout",
+          "elements": [
+            {
+              "type": "Control",
+              "scope": "#/properties/enable_artist_url"
+            },
+            {
+              "type": "Control",
+              "scope": "#/properties/enable_artist_biography"
+            },
+            {
+              "type": "Control",
+              "scope": "#/properties/enable_artist_images"
+            }
+          ]
+        },
+        {
+          "type": "HorizontalLayout",
+          "elements": [
+            {
+              "type": "Control",
+              "scope": "#/properties/enable_similar_artists"
+            },
+            {
+              "type": "Control",
+              "scope": "#/properties/enable_top_songs"
+            },
+            {
+              "type": "Label",
+              "text": ""
+            }
+          ]
+        }
+      ]
     }
   },
   "permissions": {
