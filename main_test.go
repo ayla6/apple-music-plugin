@@ -13,6 +13,24 @@ import (
 	. "github.com/onsi/gomega"
 )
 
+const taylorSwiftID = int64(159260351)
+
+func mustMarshal(v any) []byte {
+	data, err := json.Marshal(v)
+	ExpectWithOffset(1, err).ToNot(HaveOccurred())
+	return data
+}
+
+// setupTaylorSwiftCache pre-caches the Taylor Swift artist ID and configures
+// country/TTL mocks used by most capability method tests.
+func setupTaylorSwiftCache() {
+	host.KVStoreMock.On("Get", "artist:taylor swift").Return(
+		mustMarshal(cachedArtistID{ArtistID: taylorSwiftID}), true, nil,
+	)
+	host.ConfigMock.On("Get", "countries").Return("us", true)
+	host.ConfigMock.On("GetInt", "cache_ttl_days").Return(int64(7), true)
+}
+
 var _ = Describe("appleMusicAgent", func() {
 	BeforeEach(func() {
 		pdk.ResetMock()
@@ -86,7 +104,7 @@ var _ = Describe("appleMusicAgent", func() {
 
 	Describe("kvGet", func() {
 		It("returns cached value", func() {
-			data, _ := json.Marshal(cachedArtistID{ArtistID: 12345})
+			data := mustMarshal(cachedArtistID{ArtistID: 12345})
 			host.KVStoreMock.On("Get", "artist:test").Return(data, true, nil)
 			var result cachedArtistID
 			ok := kvGet("artist:test", &result)
@@ -111,7 +129,7 @@ var _ = Describe("appleMusicAgent", func() {
 
 	Describe("kvSet", func() {
 		It("marshals and stores value", func() {
-			expected, _ := json.Marshal(cachedArtistID{ArtistID: 999})
+			expected := mustMarshal(cachedArtistID{ArtistID: 999})
 			host.KVStoreMock.On("Set", "key", expected).Return(nil)
 			err := kvSet("key", cachedArtistID{ArtistID: 999})
 			Expect(err).ToNot(HaveOccurred())
@@ -121,7 +139,7 @@ var _ = Describe("appleMusicAgent", func() {
 
 	Describe("kvSetWithTTL", func() {
 		It("marshals and stores value with TTL", func() {
-			expected, _ := json.Marshal(cachedArtistID{ArtistID: 999})
+			expected := mustMarshal(cachedArtistID{ArtistID: 999})
 			host.KVStoreMock.On("SetWithTTL", "key", expected, int64(3600)).Return(nil)
 			err := kvSetWithTTL("key", cachedArtistID{ArtistID: 999}, 3600)
 			Expect(err).ToNot(HaveOccurred())
@@ -189,13 +207,13 @@ var _ = Describe("appleMusicAgent", func() {
 		})
 
 		It("returns cached artist ID", func() {
-			data, _ := json.Marshal(cachedArtistID{ArtistID: 159260351})
+			data := mustMarshal(cachedArtistID{ArtistID: taylorSwiftID})
 			host.KVStoreMock.On("Get", "artist:taylor swift").Return(data, true, nil)
 			host.ConfigMock.On("Get", "countries").Return("us", true)
 
 			id, err := resolveArtistID("Taylor Swift")
 			Expect(err).ToNot(HaveOccurred())
-			Expect(id).To(Equal(int64(159260351)))
+			Expect(id).To(Equal(taylorSwiftID))
 		})
 
 		It("searches iTunes API on cache miss", func() {
@@ -205,20 +223,20 @@ var _ = Describe("appleMusicAgent", func() {
 			searchResp := itunesSearchResponse{
 				ResultCount: 1,
 				Results: []itunesArtistResult{
-					{WrapperType: "artist", ArtistName: "Taylor Swift", ArtistID: 159260351},
+					{WrapperType: "artist", ArtistName: "Taylor Swift", ArtistID: taylorSwiftID},
 				},
 			}
-			respBody, _ := json.Marshal(searchResp)
+			respBody := mustMarshal(searchResp)
 			host.HTTPMock.On("Send", mock.MatchedBy(func(req host.HTTPRequest) bool {
 				return req.Method == "GET" && strings.Contains(req.URL, "itunes.apple.com/search")
 			})).Return(&host.HTTPResponse{StatusCode: 200, Body: respBody}, nil)
 
-			cachedData, _ := json.Marshal(cachedArtistID{ArtistID: 159260351})
+			cachedData := mustMarshal(cachedArtistID{ArtistID: taylorSwiftID})
 			host.KVStoreMock.On("Set", "artist:taylor swift", cachedData).Return(nil)
 
 			id, err := resolveArtistID("Taylor Swift")
 			Expect(err).ToNot(HaveOccurred())
-			Expect(id).To(Equal(int64(159260351)))
+			Expect(id).To(Equal(taylorSwiftID))
 		})
 
 		It("returns error for empty artist name", func() {
@@ -231,7 +249,7 @@ var _ = Describe("appleMusicAgent", func() {
 			host.ConfigMock.On("Get", "countries").Return("us", true)
 
 			searchResp := itunesSearchResponse{ResultCount: 0, Results: nil}
-			respBody, _ := json.Marshal(searchResp)
+			respBody := mustMarshal(searchResp)
 			host.HTTPMock.On("Send", mock.Anything).Return(&host.HTTPResponse{StatusCode: 200, Body: respBody}, nil)
 
 			_, err := resolveArtistID("Unknown")
@@ -369,7 +387,7 @@ var _ = Describe("appleMusicAgent", func() {
 			host.ConfigMock.On("GetInt", "cache_ttl_days").Return(int64(7), true)
 
 			pageData := parsedPageData{Biography: "A biography"}
-			data, _ := json.Marshal(pageData)
+			data := mustMarshal(pageData)
 			host.KVStoreMock.On("Get", "page:12345:us").Return(data, true, nil)
 
 			result, err := fetchArtistPage(12345, fieldBiography)
@@ -382,7 +400,7 @@ var _ = Describe("appleMusicAgent", func() {
 			host.ConfigMock.On("GetInt", "cache_ttl_days").Return(int64(7), true)
 
 			// BR page cached but no biography
-			brData, _ := json.Marshal(parsedPageData{ImageURL: "https://img.com/br.jpg"})
+			brData := mustMarshal(parsedPageData{ImageURL: "https://img.com/br.jpg"})
 			host.KVStoreMock.On("Get", "page:12345:br").Return(brData, true, nil)
 
 			// US page has biography
@@ -403,11 +421,7 @@ var _ = Describe("appleMusicAgent", func() {
 		var agent appleMusicAgent
 
 		BeforeEach(func() {
-			pdk.PDKMock.On("Log", mock.Anything, mock.Anything).Maybe()
-			// Pre-cache artist ID to skip iTunes search
-			data, _ := json.Marshal(cachedArtistID{ArtistID: 159260351})
-			host.KVStoreMock.On("Get", "artist:taylor swift").Return(data, true, nil)
-			host.ConfigMock.On("Get", "countries").Return("us", true)
+			setupTaylorSwiftCache()
 		})
 
 		It("returns Apple Music URL", func() {
@@ -421,16 +435,12 @@ var _ = Describe("appleMusicAgent", func() {
 		var agent appleMusicAgent
 
 		BeforeEach(func() {
-			pdk.PDKMock.On("Log", mock.Anything, mock.Anything).Maybe()
-			data, _ := json.Marshal(cachedArtistID{ArtistID: 159260351})
-			host.KVStoreMock.On("Get", "artist:taylor swift").Return(data, true, nil)
-			host.ConfigMock.On("Get", "countries").Return("us", true)
-			host.ConfigMock.On("GetInt", "cache_ttl_days").Return(int64(7), true)
+			setupTaylorSwiftCache()
 		})
 
 		It("returns biography from cached page", func() {
 			pageData := parsedPageData{Biography: "Taylor Swift biography"}
-			pageBytes, _ := json.Marshal(pageData)
+			pageBytes := mustMarshal(pageData)
 			host.KVStoreMock.On("Get", "page:159260351:us").Return(pageBytes, true, nil)
 
 			resp, err := agent.GetArtistBiography(metadata.ArtistRequest{Name: "Taylor Swift"})
@@ -440,7 +450,7 @@ var _ = Describe("appleMusicAgent", func() {
 
 		It("returns error when no biography found", func() {
 			pageData := parsedPageData{ImageURL: "https://img.com/img.jpg"}
-			pageBytes, _ := json.Marshal(pageData)
+			pageBytes := mustMarshal(pageData)
 			host.KVStoreMock.On("Get", "page:159260351:us").Return(pageBytes, true, nil)
 
 			_, err := agent.GetArtistBiography(metadata.ArtistRequest{Name: "Taylor Swift"})
@@ -452,16 +462,12 @@ var _ = Describe("appleMusicAgent", func() {
 		var agent appleMusicAgent
 
 		BeforeEach(func() {
-			pdk.PDKMock.On("Log", mock.Anything, mock.Anything).Maybe()
-			data, _ := json.Marshal(cachedArtistID{ArtistID: 159260351})
-			host.KVStoreMock.On("Get", "artist:taylor swift").Return(data, true, nil)
-			host.ConfigMock.On("Get", "countries").Return("us", true)
-			host.ConfigMock.On("GetInt", "cache_ttl_days").Return(int64(7), true)
+			setupTaylorSwiftCache()
 		})
 
 		It("returns images in multiple sizes", func() {
 			pageData := parsedPageData{ImageURL: "https://is1-ssl.mzstatic.com/image/thumb/Music116/486x486bb.jpg"}
-			pageBytes, _ := json.Marshal(pageData)
+			pageBytes := mustMarshal(pageData)
 			host.KVStoreMock.On("Get", "page:159260351:us").Return(pageBytes, true, nil)
 
 			resp, err := agent.GetArtistImages(metadata.ArtistRequest{Name: "Taylor Swift"})
@@ -475,7 +481,7 @@ var _ = Describe("appleMusicAgent", func() {
 
 		It("returns error when no image found", func() {
 			pageData := parsedPageData{Biography: "A bio"}
-			pageBytes, _ := json.Marshal(pageData)
+			pageBytes := mustMarshal(pageData)
 			host.KVStoreMock.On("Get", "page:159260351:us").Return(pageBytes, true, nil)
 
 			_, err := agent.GetArtistImages(metadata.ArtistRequest{Name: "Taylor Swift"})
@@ -487,16 +493,12 @@ var _ = Describe("appleMusicAgent", func() {
 		var agent appleMusicAgent
 
 		BeforeEach(func() {
-			pdk.PDKMock.On("Log", mock.Anything, mock.Anything).Maybe()
-			data, _ := json.Marshal(cachedArtistID{ArtistID: 159260351})
-			host.KVStoreMock.On("Get", "artist:taylor swift").Return(data, true, nil)
-			host.ConfigMock.On("Get", "countries").Return("us", true)
-			host.ConfigMock.On("GetInt", "cache_ttl_days").Return(int64(7), true)
+			setupTaylorSwiftCache()
 		})
 
 		It("returns similar artists", func() {
 			pageData := parsedPageData{SimilarArtists: []similarArtistInfo{{Name: "Ed Sheeran"}, {Name: "Adele"}, {Name: "Lorde"}}}
-			pageBytes, _ := json.Marshal(pageData)
+			pageBytes := mustMarshal(pageData)
 			host.KVStoreMock.On("Get", "page:159260351:us").Return(pageBytes, true, nil)
 
 			resp, err := agent.GetSimilarArtists(metadata.SimilarArtistsRequest{Name: "Taylor Swift", Limit: 2})
@@ -508,7 +510,7 @@ var _ = Describe("appleMusicAgent", func() {
 
 		It("returns all when limit is 0", func() {
 			pageData := parsedPageData{SimilarArtists: []similarArtistInfo{{Name: "A"}, {Name: "B"}}}
-			pageBytes, _ := json.Marshal(pageData)
+			pageBytes := mustMarshal(pageData)
 			host.KVStoreMock.On("Get", "page:159260351:us").Return(pageBytes, true, nil)
 
 			resp, err := agent.GetSimilarArtists(metadata.SimilarArtistsRequest{Name: "Taylor Swift", Limit: 0})
@@ -521,11 +523,7 @@ var _ = Describe("appleMusicAgent", func() {
 		var agent appleMusicAgent
 
 		BeforeEach(func() {
-			pdk.PDKMock.On("Log", mock.Anything, mock.Anything).Maybe()
-			data, _ := json.Marshal(cachedArtistID{ArtistID: 159260351})
-			host.KVStoreMock.On("Get", "artist:taylor swift").Return(data, true, nil)
-			host.ConfigMock.On("Get", "countries").Return("us", true)
-			host.ConfigMock.On("GetInt", "cache_ttl_days").Return(int64(7), true)
+			setupTaylorSwiftCache()
 		})
 
 		It("returns top songs from iTunes Lookup API", func() {
@@ -534,12 +532,12 @@ var _ = Describe("appleMusicAgent", func() {
 			lookupResp := itunesLookupResponse{
 				ResultCount: 3,
 				Results: []itunesLookupResult{
-					{WrapperType: "artist", ArtistName: "Taylor Swift", ArtistID: 159260351},
+					{WrapperType: "artist", ArtistName: "Taylor Swift", ArtistID: taylorSwiftID},
 					{WrapperType: "track", TrackName: "Anti-Hero", ArtistName: "Taylor Swift"},
 					{WrapperType: "track", TrackName: "Shake It Off", ArtistName: "Taylor Swift"},
 				},
 			}
-			respBody, _ := json.Marshal(lookupResp)
+			respBody := mustMarshal(lookupResp)
 			host.HTTPMock.On("Send", mock.MatchedBy(func(req host.HTTPRequest) bool {
 				return strings.Contains(req.URL, "itunes.apple.com/lookup")
 			})).Return(&host.HTTPResponse{StatusCode: 200, Body: respBody}, nil)
@@ -555,7 +553,7 @@ var _ = Describe("appleMusicAgent", func() {
 
 		It("returns cached top songs", func() {
 			cached := metadata.TopSongsResponse{Songs: []metadata.SongRef{{Name: "Cached Song", Artist: "Taylor Swift"}}}
-			cachedBytes, _ := json.Marshal(cached)
+			cachedBytes := mustMarshal(cached)
 			host.KVStoreMock.On("Get", "topsongs:159260351:10").Return(cachedBytes, true, nil)
 
 			resp, err := agent.GetArtistTopSongs(metadata.TopSongsRequest{Name: "Taylor Swift"})
