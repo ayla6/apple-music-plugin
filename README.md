@@ -52,7 +52,7 @@ Access the plugin configuration in Navidrome: **Settings > Plugins > Apple Music
 - **Default**: `us`
 - **What it is**: Comma-separated list of two-letter ISO country codes for Apple Music storefronts
 - **How it works**: Storefronts are tried in order until content is found. This controls the language of artist biographies and which regional catalog is searched
-- **Example**: `us,br,de` — tries the US storefront first, then Brazil (Portuguese), then Germany (German)
+- **Example**: `br,de,us` — tries the Brazil (Portuguese) storefront first, then Germany (German), then the US (English) storefront
 - **Supported language markers**: English, Portuguese, German, French, Spanish (for similar artist detection)
 
 ## How It Works
