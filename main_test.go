@@ -22,6 +22,7 @@ var _ = Describe("appleMusicAgent", func() {
 		host.KVStoreMock.Calls = nil
 		host.HTTPMock.ExpectedCalls = nil
 		host.HTTPMock.Calls = nil
+		pdk.PDKMock.On("Log", mock.Anything, mock.Anything).Maybe()
 	})
 
 	Describe("getCountries", func() {

@@ -358,6 +358,7 @@ func parseSimilarArtists(html string) []similarArtistInfo {
 	for _, marker := range sectionMarkers {
 		idx := strings.Index(html, marker)
 		if idx != -1 {
+			pdk.Log(pdk.LogDebug, fmt.Sprintf("similar artists: found marker %q at position %d", marker, idx))
 			// Verify this is actually a similar artists section by checking context
 			contextStart := idx
 			if idx > 500 {
@@ -366,16 +367,19 @@ func parseSimilarArtists(html string) []similarArtistInfo {
 			context := html[contextStart:idx]
 			if strings.Contains(context, "svelte-") || strings.Contains(context, "section") {
 				sectionStart = idx
+				pdk.Log(pdk.LogDebug, "similar artists: context verified (svelte/section found)")
 				break
 			}
 			// Fallback: use this marker position
 			if sectionStart == -1 {
+				pdk.Log(pdk.LogDebug, "similar artists: using marker as fallback (no svelte/section in context)")
 				sectionStart = idx
 			}
 		}
 	}
 
 	if sectionStart == -1 {
+		pdk.Log(pdk.LogDebug, "similar artists: no section markers found in HTML")
 		return nil
 	}
 
@@ -385,6 +389,7 @@ func parseSimilarArtists(html string) []similarArtistInfo {
 		sectionEnd = len(html)
 	}
 	section := html[sectionStart:sectionEnd]
+	pdk.Log(pdk.LogDebug, fmt.Sprintf("similar artists: extracting from section (%d chars)", len(section)))
 
 	// Find all artist names via aria-label on lockup elements
 	var artists []similarArtistInfo
@@ -393,6 +398,7 @@ func parseSimilarArtists(html string) []similarArtistInfo {
 	// Look for artist name patterns: lockup elements with aria-label containing artist names
 	namePattern := regexp.MustCompile(`aria-label="([^"]+?)(?:,\s|")`)
 	matches := namePattern.FindAllStringSubmatch(section, -1)
+	pdk.Log(pdk.LogDebug, fmt.Sprintf("similar artists: found %d aria-label matches in section", len(matches)))
 	for _, m := range matches {
 		name := strings.TrimSpace(m[1])
 		// Skip section-level labels and non-artist labels
@@ -400,12 +406,17 @@ func parseSimilarArtists(html string) []similarArtistInfo {
 			strings.Contains(strings.ToLower(name), "artist") ||
 			strings.Contains(strings.ToLower(name), "section") ||
 			seen[name] {
+			if name != "" && !seen[name] {
+				pdk.Log(pdk.LogDebug, fmt.Sprintf("similar artists: skipping label %q", name))
+			}
 			continue
 		}
 		seen[name] = true
 		artists = append(artists, similarArtistInfo{Name: name})
+		pdk.Log(pdk.LogDebug, fmt.Sprintf("similar artists: found artist %q", name))
 	}
 
+	pdk.Log(pdk.LogDebug, fmt.Sprintf("similar artists: total found=%d", len(artists)))
 	return artists
 }
 
@@ -450,6 +461,7 @@ func fetchArtistPage(artistID int64, wantField string) (*parsedPageData, error) 
 		}
 
 		html := string(body)
+		pdk.Log(pdk.LogDebug, fmt.Sprintf("received page for country %s: %d bytes, status %d", country, len(body), statusCode))
 		page := parsePage(html)
 
 		// Cache the result
@@ -475,20 +487,33 @@ func fetchArtistPage(artistID int64, wantField string) (*parsedPageData, error) 
 func parsePage(html string) *parsedPageData {
 	page := &parsedPageData{}
 
+	pdk.Log(pdk.LogDebug, fmt.Sprintf("parsing page HTML (%d bytes)", len(html)))
+
 	// Parse JSON-LD for biography and image
 	ld, err := parseJSONLD(html)
 	if err == nil {
 		page.Biography = ld.Description
 		page.ImageURL = ld.Image
+		pdk.Log(pdk.LogDebug, fmt.Sprintf("JSON-LD parsed: type=%s, name=%s, bio=%d chars, image=%s",
+			ld.Type, ld.Name, len(ld.Description), ld.Image))
+	} else {
+		pdk.Log(pdk.LogDebug, "JSON-LD parsing failed: "+err.Error())
 	}
 
 	// Fallback to OpenGraph for image
 	if page.ImageURL == "" {
 		page.ImageURL = parseOpenGraphImage(html)
+		if page.ImageURL != "" {
+			pdk.Log(pdk.LogDebug, "OpenGraph image found: "+page.ImageURL)
+		} else {
+			pdk.Log(pdk.LogDebug, "no OpenGraph image found")
+		}
 	}
 
 	// Parse similar artists
 	page.SimilarArtists = parseSimilarArtists(html)
+	pdk.Log(pdk.LogDebug, fmt.Sprintf("parsed page result: bio=%d chars, image=%v, similar=%d",
+		len(page.Biography), page.ImageURL != "", len(page.SimilarArtists)))
 
 	return page
 }
@@ -525,18 +550,22 @@ func (a *appleMusicAgent) GetArtistURL(input metadata.ArtistRequest) (*metadata.
 func (a *appleMusicAgent) GetArtistBiography(input metadata.ArtistRequest) (*metadata.ArtistBiographyResponse, error) {
 	artistID, err := resolveArtistID(input.Name)
 	if err != nil {
+		pdk.Log(pdk.LogWarn, "GetArtistBiography: resolve failed: "+err.Error())
 		return nil, err
 	}
 
 	page, err := fetchArtistPage(artistID, "biography")
 	if err != nil {
+		pdk.Log(pdk.LogWarn, "GetArtistBiography: fetchArtistPage failed: "+err.Error())
 		return nil, err
 	}
 
 	if page.Biography == "" {
+		pdk.Log(pdk.LogDebug, "GetArtistBiography: no biography found in any country page")
 		return nil, errors.New("no biography found")
 	}
 
+	pdk.Log(pdk.LogDebug, fmt.Sprintf("GetArtistBiography: returning biography (%d chars)", len(page.Biography)))
 	return &metadata.ArtistBiographyResponse{Biography: page.Biography}, nil
 }
 
@@ -573,17 +602,21 @@ func (a *appleMusicAgent) GetArtistImages(input metadata.ArtistRequest) (*metada
 func (a *appleMusicAgent) GetSimilarArtists(input metadata.SimilarArtistsRequest) (*metadata.SimilarArtistsResponse, error) {
 	artistID, err := resolveArtistID(input.Name)
 	if err != nil {
+		pdk.Log(pdk.LogWarn, "GetSimilarArtists: resolve failed: "+err.Error())
 		return nil, err
 	}
 
 	page, err := fetchArtistPage(artistID, "similar")
 	if err != nil {
+		pdk.Log(pdk.LogWarn, "GetSimilarArtists: fetchArtistPage failed: "+err.Error())
 		return nil, err
 	}
 
 	if len(page.SimilarArtists) == 0 {
+		pdk.Log(pdk.LogDebug, "GetSimilarArtists: no similar artists found in any country page")
 		return nil, errors.New("no similar artists found")
 	}
+	pdk.Log(pdk.LogDebug, fmt.Sprintf("GetSimilarArtists: found %d similar artists", len(page.SimilarArtists)))
 
 	limit := int(input.Limit)
 	if limit <= 0 {
