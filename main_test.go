@@ -337,25 +337,25 @@ var _ = Describe("appleMusicAgent", func() {
 	Describe("hasField", func() {
 		It("checks biography field", func() {
 			page := &parsedPageData{Biography: "A bio"}
-			Expect(hasField(page, "biography")).To(BeTrue())
-			Expect(hasField(&parsedPageData{}, "biography")).To(BeFalse())
+			Expect(hasField(page, fieldBiography)).To(BeTrue())
+			Expect(hasField(&parsedPageData{}, fieldBiography)).To(BeFalse())
 		})
 
 		It("checks image field", func() {
 			page := &parsedPageData{ImageURL: "https://example.com/img.jpg"}
-			Expect(hasField(page, "image")).To(BeTrue())
-			Expect(hasField(&parsedPageData{}, "image")).To(BeFalse())
+			Expect(hasField(page, fieldImage)).To(BeTrue())
+			Expect(hasField(&parsedPageData{}, fieldImage)).To(BeFalse())
 		})
 
 		It("checks similar field", func() {
 			page := &parsedPageData{SimilarArtists: []similarArtistInfo{{Name: "X"}}}
-			Expect(hasField(page, "similar")).To(BeTrue())
-			Expect(hasField(&parsedPageData{}, "similar")).To(BeFalse())
+			Expect(hasField(page, fieldSimilar)).To(BeTrue())
+			Expect(hasField(&parsedPageData{}, fieldSimilar)).To(BeFalse())
 		})
 
 		It("checks any field by default", func() {
-			Expect(hasField(&parsedPageData{Biography: "bio"}, "")).To(BeTrue())
-			Expect(hasField(&parsedPageData{}, "")).To(BeFalse())
+			Expect(hasField(&parsedPageData{Biography: "bio"}, fieldAny)).To(BeTrue())
+			Expect(hasField(&parsedPageData{}, fieldAny)).To(BeFalse())
 		})
 	})
 
@@ -372,7 +372,7 @@ var _ = Describe("appleMusicAgent", func() {
 			data, _ := json.Marshal(pageData)
 			host.KVStoreMock.On("Get", "page:12345:us").Return(data, true, nil)
 
-			result, err := fetchArtistPage(12345, "biography")
+			result, err := fetchArtistPage(12345, fieldBiography)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(result.Biography).To(Equal("A biography"))
 		})
@@ -393,7 +393,7 @@ var _ = Describe("appleMusicAgent", func() {
 			})).Return(&host.HTTPResponse{StatusCode: 200, Body: []byte(usHTML)}, nil)
 			host.KVStoreMock.On("SetWithTTL", "page:12345:us", mock.Anything, mock.Anything).Return(nil)
 
-			result, err := fetchArtistPage(12345, "biography")
+			result, err := fetchArtistPage(12345, fieldBiography)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(result.Biography).To(Equal("English bio"))
 		})

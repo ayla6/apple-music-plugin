@@ -382,11 +382,19 @@ func parseSimilarArtists(html string) []similarArtistInfo {
 
 // --- Web page fetching ---
 
+// pageField identifies which field of parsedPageData must be non-empty.
+type pageField int
+
+const (
+	fieldAny       pageField = iota // any non-empty field
+	fieldBiography                  // Biography
+	fieldImage                      // ImageURL
+	fieldSimilar                    // SimilarArtists
+)
+
 // fetchArtistPage fetches and parses the Apple Music artist page.
 // Tries each country code in order until content is found.
-// The `wantField` parameter indicates which field must be non-empty:
-// "biography", "image", "similar", or "" for any content.
-func fetchArtistPage(artistID int64, wantField string) (*parsedPageData, error) {
+func fetchArtistPage(artistID int64, wantField pageField) (*parsedPageData, error) {
 	countries := getCountries()
 	ttl := getCacheTTLSeconds()
 	var firstResult *parsedPageData
@@ -480,13 +488,13 @@ func parsePage(html string) *parsedPageData {
 }
 
 // hasField checks if the parsed page has the requested field populated.
-func hasField(page *parsedPageData, field string) bool {
+func hasField(page *parsedPageData, field pageField) bool {
 	switch field {
-	case "biography":
+	case fieldBiography:
 		return page.Biography != ""
-	case "image":
+	case fieldImage:
 		return page.ImageURL != ""
-	case "similar":
+	case fieldSimilar:
 		return len(page.SimilarArtists) > 0
 	default:
 		return page.Biography != "" || page.ImageURL != "" || len(page.SimilarArtists) > 0
@@ -515,7 +523,7 @@ func (a *appleMusicAgent) GetArtistBiography(input metadata.ArtistRequest) (*met
 		return nil, err
 	}
 
-	page, err := fetchArtistPage(artistID, "biography")
+	page, err := fetchArtistPage(artistID, fieldBiography)
 	if err != nil {
 		pdk.Log(pdk.LogWarn, "GetArtistBiography: fetchArtistPage failed: "+err.Error())
 		return nil, err
@@ -537,7 +545,7 @@ func (a *appleMusicAgent) GetArtistImages(input metadata.ArtistRequest) (*metada
 		return nil, err
 	}
 
-	page, err := fetchArtistPage(artistID, "image")
+	page, err := fetchArtistPage(artistID, fieldImage)
 	if err != nil {
 		return nil, err
 	}
@@ -567,7 +575,7 @@ func (a *appleMusicAgent) GetSimilarArtists(input metadata.SimilarArtistsRequest
 		return nil, err
 	}
 
-	page, err := fetchArtistPage(artistID, "similar")
+	page, err := fetchArtistPage(artistID, fieldSimilar)
 	if err != nil {
 		pdk.Log(pdk.LogWarn, "GetSimilarArtists: fetchArtistPage failed: "+err.Error())
 		return nil, err
