@@ -342,10 +342,6 @@ func rewriteImageSize(imageURL string, size int) string {
 	return imageURLRegex.ReplaceAllString(imageURL, fmt.Sprintf("/%dx%dbb.", size, size))
 }
 
-// similarArtistLinkRegex matches Apple Music artist links in the similar artists section.
-// Pattern: /XX/artist/artist-name/12345 where XX is a country code.
-var similarArtistLinkRegex = regexp.MustCompile(`/[a-z]{2}/artist/[^/]+/(\d+)`)
-
 // parseSimilarArtists extracts similar artist names from the Apple Music HTML page.
 // The section is identified by structural patterns since the label is localized.
 func parseSimilarArtists(html string) []similarArtistInfo {
