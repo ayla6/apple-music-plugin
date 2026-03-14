@@ -233,4 +233,79 @@ var _ = Describe("appleMusicAgent", func() {
 			Expect(err).To(MatchError("no artist found"))
 		})
 	})
+
+	Describe("parseJSONLD", func() {
+		It("extracts JSON-LD data from HTML", func() {
+			html := `<html><head><script type="application/ld+json">{"@type":"MusicGroup","name":"Taylor Swift","description":"A bio","image":"https://example.com/img.jpg"}</script></head></html>`
+			ld, err := parseJSONLD(html)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(ld.Name).To(Equal("Taylor Swift"))
+			Expect(ld.Description).To(Equal("A bio"))
+			Expect(ld.Image).To(Equal("https://example.com/img.jpg"))
+		})
+
+		It("returns error when no JSON-LD found", func() {
+			_, err := parseJSONLD("<html><head></head></html>")
+			Expect(err).To(MatchError("no JSON-LD found"))
+		})
+
+		It("returns error for malformed JSON-LD", func() {
+			html := `<html><script type="application/ld+json">{invalid`
+			_, err := parseJSONLD(html)
+			Expect(err).To(HaveOccurred())
+		})
+	})
+
+	Describe("parseOpenGraphImage", func() {
+		It("extracts og:image URL", func() {
+			html := `<html><meta property="og:image" content="https://example.com/og.jpg"></html>`
+			Expect(parseOpenGraphImage(html)).To(Equal("https://example.com/og.jpg"))
+		})
+
+		It("returns empty when no og:image found", func() {
+			Expect(parseOpenGraphImage("<html></html>")).To(BeEmpty())
+		})
+	})
+
+	Describe("rewriteImageSize", func() {
+		It("rewrites dimension segment", func() {
+			url := "https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/ab/cd/ef/abcdef-12345/486x486bb.jpg"
+			result := rewriteImageSize(url, 1000)
+			Expect(result).To(ContainSubstring("/1000x1000bb."))
+			Expect(result).ToNot(ContainSubstring("486x486"))
+		})
+
+		It("handles URLs without dimension segment", func() {
+			url := "https://example.com/image.jpg"
+			Expect(rewriteImageSize(url, 300)).To(Equal(url))
+		})
+	})
+
+	Describe("parseSimilarArtists", func() {
+		It("extracts artists from section with aria-labels", func() {
+			html := `<html><section class="svelte-abc">` +
+				`<div aria-label="Similar Artists">` +
+				`<div aria-label="Ed Sheeran, "><a href="/us/artist/ed-sheeran/183313439"></a></div>` +
+				`<div aria-label="Adele, "><a href="/us/artist/adele/262836961"></a></div>` +
+				`</div></section></html>`
+			artists := parseSimilarArtists(html)
+			Expect(artists).To(HaveLen(2))
+			Expect(artists[0].Name).To(Equal("Ed Sheeran"))
+			Expect(artists[1].Name).To(Equal("Adele"))
+		})
+
+		It("returns nil when no section found", func() {
+			Expect(parseSimilarArtists("<html></html>")).To(BeNil())
+		})
+
+		It("deduplicates artist names", func() {
+			html := `<html><section class="svelte-abc">` +
+				`<div aria-label="Similar Artists">` +
+				`<div aria-label="Ed Sheeran, "></div>` +
+				`<div aria-label="Ed Sheeran, "></div>` +
+				`</div></section></html>`
+			artists := parseSimilarArtists(html)
+			Expect(artists).To(HaveLen(1))
+		})
+	})
 })
