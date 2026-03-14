@@ -2,10 +2,14 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/navidrome/navidrome/plugins/pdk/go/host"
 	"github.com/navidrome/navidrome/plugins/pdk/go/metadata"
+	"github.com/navidrome/navidrome/plugins/pdk/go/pdk"
 )
 
 const (
@@ -204,4 +208,83 @@ func httpGet(rawURL string) ([]byte, int32, error) {
 // normalizeArtistName normalizes an artist name for cache key use.
 func normalizeArtistName(name string) string {
 	return strings.ToLower(strings.TrimSpace(name))
+}
+
+// --- Artist resolution ---
+
+// resolveArtistID looks up an Apple Music artist ID by name.
+// Uses KVStore cache for permanent storage of name→ID mappings.
+func resolveArtistID(artistName string) (int64, error) {
+	normalized := normalizeArtistName(artistName)
+	if normalized == "" {
+		return 0, errors.New("empty artist name")
+	}
+
+	// Check cache
+	cacheKey := "artist:" + normalized
+	if cached, ok := kvGetArtistID(cacheKey); ok {
+		pdk.Log(pdk.LogDebug, "artist ID cache hit: "+normalized)
+		return cached.ArtistID, nil
+	}
+
+	// Search iTunes API
+	countries := getCountries()
+	country := countries[0]
+
+	searchURL := fmt.Sprintf("%s?term=%s&entity=musicArtist&limit=5&country=%s",
+		iTunesSearchURL, url.QueryEscape(artistName), url.QueryEscape(country))
+
+	pdk.Log(pdk.LogDebug, "searching iTunes API: "+searchURL)
+
+	body, statusCode, err := httpGet(searchURL)
+	if err != nil {
+		return 0, fmt.Errorf("iTunes search failed: %w", err)
+	}
+	if statusCode != 200 {
+		return 0, fmt.Errorf("iTunes search returned status %d", statusCode)
+	}
+
+	var searchResp itunesSearchResponse
+	if err := json.Unmarshal(body, &searchResp); err != nil {
+		return 0, fmt.Errorf("failed to parse iTunes response: %w", err)
+	}
+
+	if searchResp.ResultCount == 0 {
+		return 0, errors.New("no artist found")
+	}
+
+	// Find best match by name similarity
+	bestMatch := findBestArtistMatch(artistName, searchResp.Results)
+	if bestMatch == nil {
+		return 0, errors.New("no matching artist found")
+	}
+
+	// Cache permanently
+	if err := kvSet(cacheKey, cachedArtistID{ArtistID: bestMatch.ArtistID}); err != nil {
+		pdk.Log(pdk.LogWarn, "failed to cache artist ID: "+err.Error())
+	}
+
+	pdk.Log(pdk.LogInfo, fmt.Sprintf("resolved artist '%s' → ID %d", artistName, bestMatch.ArtistID))
+	return bestMatch.ArtistID, nil
+}
+
+// findBestArtistMatch finds the best matching artist from search results.
+// Uses case-insensitive exact match first, then falls back to first result.
+func findBestArtistMatch(query string, results []itunesArtistResult) *itunesArtistResult {
+	queryLower := strings.ToLower(strings.TrimSpace(query))
+	for i := range results {
+		if results[i].WrapperType != "artist" {
+			continue
+		}
+		if strings.ToLower(results[i].ArtistName) == queryLower {
+			return &results[i]
+		}
+	}
+	// Fall back to first artist result
+	for i := range results {
+		if results[i].WrapperType == "artist" {
+			return &results[i]
+		}
+	}
+	return nil
 }
