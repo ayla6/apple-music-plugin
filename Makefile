@@ -26,7 +26,7 @@ clean:
 .PHONY: clean
 
 release:
-	@if [[ ! "$${V}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$$ ]]; then echo "Usage: make release V=X.X.X [PRE=true]"; exit 1; fi
-	gh workflow run create-release.yml -f version=$${V} -f prerelease=$$(if [ "$(PRE)" = "true" ]; then echo true; else echo false; fi)
-	@echo "Release v$${V}$$(if [ "$(PRE)" = "true" ]; then echo -prerelease; fi) workflow triggered. Check progress: gh run list --workflow=create-release.yml"
+	@if [[ ! "$${V}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$$ ]]; then echo "Usage: make release V=X.X.X [BETA=N]"; exit 1; fi
+	gh workflow run create-release.yml -f version=$${V} -f beta=$(BETA)
+	@echo "Release v$${V}$$(if [ -n "$(BETA)" ] && [ "$(BETA)" != "0" ]; then echo -beta-$(BETA); fi) workflow triggered. Check progress: gh run list --workflow=create-release.yml"
 .PHONY: release
