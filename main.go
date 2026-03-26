@@ -309,23 +309,136 @@ func resolveArtistID(artistName string) (int64, error) {
 	return bestMatch.ArtistID, nil
 }
 
-// findBestArtistMatch finds the best matching artist from search results.
-// Uses case-insensitive exact match first, then falls back to first result.
-func findBestArtistMatch(query string, results []itunesArtistResult) *itunesArtistResult {
-	normalized := normalizeName(query)
-	var firstArtist *itunesArtistResult
-	for i := range results {
-		if results[i].WrapperType != "artist" {
-			continue
-		}
-		if firstArtist == nil {
-			firstArtist = &results[i]
-		}
-		if normalizeName(results[i].ArtistName) == normalized {
-			return &results[i]
+// isNonLatin returns true if the string contains characters outside Latin + Latin Extended
+// (U+0000–U+024F). Used to detect when string comparison against an iTunes result is
+// meaningless — e.g. querying 新しい学校 will return "ATARASHII GAKKO!" which we can't
+// verify ourselves, so we defer to iTunes' own confidence instead.
+func isNonLatin(s string) bool {
+	for _, r := range s {
+		if r > 0x024F {
+			return true
 		}
 	}
-	return firstArtist
+	return false
+}
+
+// simplifyName produces a comparable form for fuzzy name matching.
+// Strips diacritics, collapses anything non-alphanumeric to spaces, and drops
+// leading articles — so "Queensrÿche", "Queensryche", and "The Queensryche" all
+// reduce to the same string.
+func simplifyName(s string) string {
+	replacer := strings.NewReplacer(
+		"à", "a", "á", "a", "â", "a", "ä", "a", "å", "a", "ã", "a",
+		"è", "e", "é", "e", "ê", "e", "ë", "e",
+		"ì", "i", "í", "i", "î", "i", "ï", "i",
+		"ò", "o", "ó", "o", "ô", "o", "ö", "o", "ø", "o", "õ", "o",
+		"ù", "u", "ú", "u", "û", "u", "ü", "u",
+		"ý", "y", "ÿ", "y", "ñ", "n", "ç", "c",
+		"ß", "ss", "æ", "ae", "œ", "oe",
+	)
+	s = replacer.Replace(strings.ToLower(strings.TrimSpace(s)))
+	var b strings.Builder
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		} else {
+			b.WriteRune(' ')
+		}
+	}
+	s = strings.Join(strings.Fields(b.String()), " ")
+	for _, article := range []string{"the ", "a ", "an "} {
+		s = strings.TrimPrefix(s, article)
+	}
+	return s
+}
+
+// editDistance returns the Levenshtein distance between two strings.
+func editDistance(a, b string) int {
+	ra, rb := []rune(a), []rune(b)
+	la, lb := len(ra), len(rb)
+	if la == 0 {
+		return lb
+	}
+	if lb == 0 {
+		return la
+	}
+	prev, curr := make([]int, lb+1), make([]int, lb+1)
+	for j := range prev {
+		prev[j] = j
+	}
+	for i := 1; i <= la; i++ {
+		curr[0] = i
+		for j := 1; j <= lb; j++ {
+			if ra[i-1] == rb[j-1] {
+				curr[j] = prev[j-1]
+			} else {
+				d := prev[j]
+				if prev[j-1] < d {
+					d = prev[j-1]
+				}
+				if curr[j-1] < d {
+					d = curr[j-1]
+				}
+				curr[j] = 1 + d
+			}
+		}
+		prev, curr = curr, prev
+	}
+	return prev[lb]
+}
+
+// findBestArtistMatch selects the right artist from iTunes search results, or returns nil
+// if nothing is close enough. A wrong match here poisons the provider waterfall by
+// returning data that looks valid but isn't, so the bar for accepting a result is
+// intentionally higher than the bar for rejecting one.
+//
+// For Latin queries, similarity is checked proportionally: the edit distance ceiling is
+// len(simplifiedQuery)/4, minimum 1. This tolerates real-world noise (punctuation, minor
+// spelling variants) while rejecting cases like "psynwav" matching "psywar" (distance 2,
+// ceiling 1).
+//
+// For non-Latin queries, comparison against an iTunes result is not meaningful — we'd be
+// comparing e.g. 新しい学校 against "ATARASHII GAKKO!". A single returned candidate means
+// iTunes was confident enough to commit to one answer, so we trust it. Multiple candidates
+// with no matching simplified name means we can't discriminate, so we return nil.
+func findBestArtistMatch(query string, results []itunesArtistResult) *itunesArtistResult {
+	candidates := make([]*itunesArtistResult, 0, len(results))
+	for i := range results {
+		if results[i].WrapperType == "artist" {
+			candidates = append(candidates, &results[i])
+		}
+	}
+	if len(candidates) == 0 {
+		return nil
+	}
+
+	simplifiedQuery := simplifyName(query)
+
+	for _, r := range candidates {
+		if simplifyName(r.ArtistName) == simplifiedQuery {
+			return r
+		}
+	}
+
+	if isNonLatin(query) {
+		if len(candidates) == 1 {
+			pdk.Log(pdk.LogDebug, fmt.Sprintf("trusting single iTunes result %q for non-Latin query %q", candidates[0].ArtistName, query))
+			return candidates[0]
+		}
+		return nil
+	}
+
+	ceiling := len([]rune(simplifiedQuery)) / 4
+	if ceiling < 1 {
+		ceiling = 1
+	}
+	for _, r := range candidates {
+		if editDistance(simplifiedQuery, simplifyName(r.ArtistName)) <= ceiling {
+			return r
+		}
+	}
+
+	return nil
 }
 
 // baseNameDelimiters are characters that typically separate the core album title
