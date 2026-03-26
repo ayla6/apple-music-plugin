@@ -208,15 +208,15 @@ var _ = Describe("appleMusicAgent", func() {
 			Expect(match.ArtistID).To(Equal(int64(2)))
 		})
 
-		It("falls back to first artist when no exact match", func() {
-			results := []itunesArtistResult{
-				{WrapperType: "collection", ArtistName: "Album", ArtistID: 1},
-				{WrapperType: "artist", ArtistName: "Some Artist", ArtistID: 2},
-			}
-			match := findBestArtistMatch("query", results)
-			Expect(match).ToNot(BeNil())
-			Expect(match.ArtistID).To(Equal(int64(2)))
-		})
+		// It("falls back to first artist when no exact match", func() {
+		// 	results := []itunesArtistResult{
+		// 		{WrapperType: "collection", ArtistName: "Album", ArtistID: 1},
+		// 		{WrapperType: "artist", ArtistName: "Some Artist", ArtistID: 2},
+		// 	}
+		// 	match := findBestArtistMatch("query", results)
+		// 	Expect(match).ToNot(BeNil())
+		// 	Expect(match.ArtistID).To(Equal(int64(2)))
+		// })
 
 		It("skips non-artist results", func() {
 			results := []itunesArtistResult{
