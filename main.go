@@ -780,7 +780,7 @@ func (a *appleMusicAgent) GetArtistBiography(input metadata.ArtistRequest) (*met
 	if err != nil {
 		return nil, err
 	}
-	if page == nil || page.Biography == "" {
+	if page == nil || page.Biography == "" || strings.Contains(page.Biography, "Apple Music") {
 		pdk.Log(pdk.LogDebug, "no biography found for: "+input.Name)
 		return nil, nil
 	}
