@@ -625,6 +625,19 @@ func isPlaceholderImage(url string) bool {
 	return url == placeholderImageURL
 }
 
+// isPlaceholderBiography returns true if the text is a generic Apple Music promotional
+// description rather than a real artist biography. Apple Music returns these for artists
+// without a curated bio. The placeholder always mentions "Apple Music" in its first
+// sentence (e.g., "Listen to music by X on Apple Music."). Real biographies may mention
+// "Apple Music" deeper in the text (e.g., awards), so we only check the first sentence.
+func isPlaceholderBiography(text string) bool {
+	firstSentence := text
+	if idx := strings.Index(text, ". "); idx != -1 {
+		firstSentence = text[:idx]
+	}
+	return appleMusicRegex.MatchString(firstSentence)
+}
+
 // parseOpenGraphImage extracts the og:image URL from an HTML page.
 func parseOpenGraphImage(html string) string {
 	// Look for <meta property="og:image" content="...">
@@ -640,6 +653,10 @@ func parseOpenGraphImage(html string) string {
 	}
 	return html[idx : idx+endIdx]
 }
+
+// appleMusicRegex matches "Apple Music" with any whitespace between the words,
+// including non-breaking spaces (U+00A0) used in some locales.
+var appleMusicRegex = regexp.MustCompile(`Apple[\s\pZ]+Music`)
 
 // imageURLRegex matches Apple's mzstatic.com image dimension segments like "486x486bb".
 var imageURLRegex = regexp.MustCompile(`/\d+x\d+[a-z]*\.`)
@@ -814,6 +831,12 @@ func parsePage(html string) *parsedPageData {
 		pdk.Log(pdk.LogDebug, "JSON-LD parsing failed: "+err.Error())
 	}
 
+	// Discard generic Apple Music promotional description (not a real biography)
+	if isPlaceholderBiography(page.Biography) {
+		pdk.Log(pdk.LogDebug, "discarding placeholder biography: "+page.Biography)
+		page.Biography = ""
+	}
+
 	// Discard generic Apple Music placeholder image
 	if isPlaceholderImage(page.ImageURL) {
 		pdk.Log(pdk.LogDebug, "discarding placeholder image: "+page.ImageURL)
@@ -893,7 +916,7 @@ func (a *appleMusicAgent) GetArtistBiography(input metadata.ArtistRequest) (*met
 	if err != nil {
 		return nil, err
 	}
-	if page == nil || page.Biography == "" || strings.Contains(page.Biography, "Apple Music") {
+	if page == nil || page.Biography == "" || isPlaceholderBiography(page.Biography) {
 		pdk.Log(pdk.LogDebug, "no biography found for: "+input.Name)
 		return nil, nil
 	}
