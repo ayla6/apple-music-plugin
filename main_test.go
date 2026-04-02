@@ -586,6 +586,52 @@ var _ = Describe("appleMusicAgent", func() {
 		})
 	})
 
+	Describe("isPlaceholderBiography", func() {
+		It("returns true for English promotional text", func() {
+			text := `Listen to music by Der Schlunz on Apple Music. Find top songs and albums by Der Schlunz including 09 - Der Schlunz and more.`
+			Expect(isPlaceholderBiography(text)).To(BeTrue())
+		})
+
+		It("returns true for German promotional text", func() {
+			text := "Hör dir Musik von Der Schlunz auf Apple\u00a0Music an. Finde Toptitel und -alben von Der Schlunz."
+			Expect(isPlaceholderBiography(text)).To(BeTrue())
+		})
+
+		It("returns true for French promotional text", func() {
+			text := `Écoutez la musique de Der Schlunz sur Apple Music. Découvrez les meilleurs titres et albums de Der Schlunz.`
+			Expect(isPlaceholderBiography(text)).To(BeTrue())
+		})
+
+		It("returns true for Spanish promotional text", func() {
+			text := `Escucha música de Der Schlunz en Apple Music. Busca canciones y álbumes de Der Schlunz.`
+			Expect(isPlaceholderBiography(text)).To(BeTrue())
+		})
+
+		It("returns true for Portuguese promotional text", func() {
+			text := `Escute as músicas de Der Schlunz no Apple Music. Encontre as melhores músicas e álbuns de Der Schlunz.`
+			Expect(isPlaceholderBiography(text)).To(BeTrue())
+		})
+
+		It("returns true for Italian promotional text", func() {
+			text := `Ascolta la musica di Der Schlunz su Apple Music. Trova i brani icons e icons albums di Der Schlunz.`
+			Expect(isPlaceholderBiography(text)).To(BeTrue())
+		})
+
+		It("returns false for a real biography that mentions Apple Music later", func() {
+			text := `Taylor Swift formally embraced pop on 2012's Red. She earned the Apple Music Award for Songwriter of the Year.`
+			Expect(isPlaceholderBiography(text)).To(BeFalse())
+		})
+
+		It("returns false for a real biography", func() {
+			text := `Taylor Alison Swift is an American singer-songwriter. Recognized for her genre-restless artistry, she is a prominent cultural figure of the 21st century.`
+			Expect(isPlaceholderBiography(text)).To(BeFalse())
+		})
+
+		It("returns false for empty string", func() {
+			Expect(isPlaceholderBiography("")).To(BeFalse())
+		})
+	})
+
 	Describe("parseOpenGraphImage", func() {
 		It("extracts og:image URL", func() {
 			html := `<html><meta property="og:image" content="https://example.com/og.jpg"></html>`
@@ -753,6 +799,16 @@ var _ = Describe("appleMusicAgent", func() {
 
 		It("returns nil when no biography found", func() {
 			pageData := parsedPageData{ImageURL: "https://img.com/img.jpg"}
+			pageBytes := mustMarshal(pageData)
+			host.KVStoreMock.On("Get", "page:159260351:us").Return(pageBytes, true, nil)
+
+			resp, err := agent.GetArtistBiography(metadata.ArtistRequest{Name: "Taylor Swift"})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(resp).To(BeNil())
+		})
+
+		It("returns nil when biography is a generic Apple Music promotional text", func() {
+			pageData := parsedPageData{Biography: "Listen to music by Taylor Swift on Apple Music. Find top songs and albums by Taylor Swift."}
 			pageBytes := mustMarshal(pageData)
 			host.KVStoreMock.On("Get", "page:159260351:us").Return(pageBytes, true, nil)
 
